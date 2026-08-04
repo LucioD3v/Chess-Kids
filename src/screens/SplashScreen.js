@@ -41,20 +41,22 @@ export default function SplashScreen({ navigation }) {
         }),
       ])
     ).start();
+  }, []);
 
-    // Navigate after delay
+  useEffect(() => {
+    // Only navigate once loading is done
+    if (loading) return;
+
     const timer = setTimeout(() => {
-      if (!loading) {
-        if (profile) {
-          navigation.replace('Home');
-        } else {
-          navigation.replace('Profile');
-        }
+      if (profile) {
+        navigation.replace('Home');
+      } else {
+        navigation.replace('Profile');
       }
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [loading, profile]);
+  }, [loading, profile, navigation]);
 
   return (
     <View style={styles.container}>

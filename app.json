@@ -22,6 +22,9 @@
       },
       "package": "com.chesskids.app"
     },
-    "plugins": []
+    "plugins": [
+      "expo-asset",
+      "expo-status-bar"
+    ]
   }
 }
