@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ProgressContext = createContext();
@@ -28,6 +28,12 @@ export function ProgressProvider({ children }) {
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
   const [loading, setLoading] = useState(true);
 
+  // Ref so async callbacks always read the latest progress without stale closures
+  const progressRef = useRef(INITIAL_PROGRESS);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
   useEffect(() => {
     loadProgress();
   }, []);
@@ -36,7 +42,10 @@ export function ProgressProvider({ children }) {
     try {
       const data = await AsyncStorage.getItem('chess_kids_progress');
       if (data) {
-        setProgress(JSON.parse(data));
+        // Merge with INITIAL_PROGRESS so new fields added in future versions don't become undefined
+        const merged = { ...INITIAL_PROGRESS, ...JSON.parse(data) };
+        progressRef.current = merged;
+        setProgress(merged);
       }
     } catch (error) {
       console.error('Error loading progress:', error);
@@ -54,8 +63,22 @@ export function ProgressProvider({ children }) {
     }
   };
 
+  const checkAchievements = (currentProgress) => {
+    const newAchievements = [...currentProgress.achievements];
+    ACHIEVEMENTS.forEach((achievement) => {
+      if (
+        !newAchievements.includes(achievement.id) &&
+        achievement.requirement(currentProgress)
+      ) {
+        newAchievements.push(achievement.id);
+      }
+    });
+    currentProgress.achievements = newAchievements;
+  };
+
   const completeLesson = async (lessonId) => {
-    const updated = { ...progress };
+    const current = progressRef.current;
+    const updated = { ...current };
     if (!updated.lessonsCompleted.includes(lessonId)) {
       updated.lessonsCompleted = [...updated.lessonsCompleted, lessonId];
       updated.totalStars += 1;
@@ -65,7 +88,8 @@ export function ProgressProvider({ children }) {
   };
 
   const recordWin = async (difficulty) => {
-    const updated = { ...progress };
+    const current = progressRef.current;
+    const updated = { ...current };
     if (difficulty === 'easy') updated.easyWins += 1;
     else if (difficulty === 'medium') updated.mediumWins += 1;
     else if (difficulty === 'hard') updated.hardWins += 1;
@@ -74,24 +98,13 @@ export function ProgressProvider({ children }) {
     await saveProgress(updated);
   };
 
-  const checkAchievements = (currentProgress) => {
-    ACHIEVEMENTS.forEach((achievement) => {
-      if (
-        !currentProgress.achievements.includes(achievement.id) &&
-        achievement.requirement(currentProgress)
-      ) {
-        currentProgress.achievements = [...currentProgress.achievements, achievement.id];
-      }
-    });
-  };
-
   const saveGame = async (gameState) => {
-    const updated = { ...progress, savedGame: gameState };
+    const updated = { ...progressRef.current, savedGame: gameState };
     await saveProgress(updated);
   };
 
   const clearSavedGame = async () => {
-    const updated = { ...progress, savedGame: null };
+    const updated = { ...progressRef.current, savedGame: null };
     await saveProgress(updated);
   };
 

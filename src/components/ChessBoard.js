@@ -14,6 +14,13 @@ const LEGAL_MOVE_COLOR = '#4CAF5060';
 const LAST_MOVE_COLOR = '#66BB6A40';
 const CHECK_COLOR = '#FF000060';
 
+const PROMOTION_PIECES = [
+  { piece: 'q', symbol: '♛', name: 'Reina' },
+  { piece: 'r', symbol: '♜', name: 'Torre' },
+  { piece: 'b', symbol: '♝', name: 'Alfil' },
+  { piece: 'n', symbol: '♞', name: 'Caballo' },
+];
+
 export default function ChessBoard({
   game,
   onMove,
@@ -24,10 +31,13 @@ export default function ChessBoard({
 }) {
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
+  const [promotionMove, setPromotionMove] = useState(null);
 
-  const board = useMemo(() => game.board(), [game.fen()]);
-  const isCheck = game.isCheck();
-  const currentTurn = game.turn();
+  const { board, isCheck, currentTurn } = useMemo(() => ({
+    board: game.board(),
+    isCheck: game.isCheck(),
+    currentTurn: game.turn(),
+  }), [game.fen()]);
 
   const handleSquarePress = (row, col) => {
     if (disabled) return;
@@ -36,32 +46,31 @@ export default function ChessBoard({
     const square = posToSquare(row, col);
     const piece = board[row][col];
 
-    // If a piece is already selected
     if (selectedSquare) {
-      // Check if the pressed square is a legal move destination
       const moveTarget = legalMoves.find((m) => m.to === square);
-      
+
       if (moveTarget) {
-        // Make the move
-        onMove(moveTarget);
         setSelectedSquare(null);
         setLegalMoves([]);
+        // Pawn promotion: let the player choose the piece
+        if (moveTarget.promotion) {
+          setPromotionMove(moveTarget);
+          return;
+        }
+        onMove(moveTarget);
         return;
       }
 
-      // If clicking on own piece, select it instead
       if (piece && piece.color === playerColor) {
         selectPiece(square, row, col);
         return;
       }
 
-      // Deselect
       setSelectedSquare(null);
       setLegalMoves([]);
       return;
     }
 
-    // Select a piece
     if (piece && piece.color === playerColor) {
       selectPiece(square, row, col);
     }
@@ -73,6 +82,12 @@ export default function ChessBoard({
     setLegalMoves(moves);
   };
 
+  const handlePromotion = (piece) => {
+    if (!promotionMove) return;
+    onMove({ ...promotionMove, promotion: piece });
+    setPromotionMove(null);
+  };
+
   const getSquareColor = (row, col) => {
     return (row + col) % 2 === 0 ? LIGHT_SQUARE : DARK_SQUARE;
   };
@@ -80,7 +95,6 @@ export default function ChessBoard({
   const getSquareHighlight = (row, col) => {
     const square = posToSquare(row, col);
 
-    // Check highlight
     if (isCheck) {
       const piece = board[row][col];
       if (piece && piece.type === 'k' && piece.color === currentTurn) {
@@ -88,17 +102,14 @@ export default function ChessBoard({
       }
     }
 
-    // Selected piece highlight
     if (selectedSquare === square) {
       return SELECTED_COLOR;
     }
 
-    // Last move highlight
     if (lastMove && (lastMove.from === square || lastMove.to === square)) {
       return LAST_MOVE_COLOR;
     }
 
-    // Custom highlight squares
     if (highlightSquares.includes(square)) {
       return '#4FC3F780';
     }
@@ -129,7 +140,6 @@ export default function ChessBoard({
         onPress={() => handleSquarePress(row, col)}
         activeOpacity={0.7}
       >
-        {/* Legal move indicator */}
         {isLegalMove && !hasPiece && (
           <View style={styles.legalMoveDot} />
         )}
@@ -137,14 +147,12 @@ export default function ChessBoard({
           <View style={styles.captureIndicator} />
         )}
 
-        {/* Piece */}
         {piece && (
           <View style={styles.pieceContainer}>
             {getPieceComponent(piece, SQUARE_SIZE * 0.85)}
           </View>
         )}
 
-        {/* Coordinate labels */}
         {col === 0 && (
           <Text style={[styles.coordLabel, styles.rankLabel, { color: (row + col) % 2 === 0 ? DARK_SQUARE : LIGHT_SQUARE }]}>
             {8 - row}
@@ -186,6 +194,29 @@ export default function ChessBoard({
   return (
     <View style={styles.boardContainer}>
       <View style={styles.board}>{renderBoard()}</View>
+
+      {/* Promotion picker — appears over the board */}
+      {promotionMove && (
+        <View style={styles.promotionOverlay}>
+          <View style={styles.promotionCard}>
+            <Text style={styles.promotionTitle}>¡Tu peón llegó al final!</Text>
+            <Text style={styles.promotionSubtitle}>¿En qué pieza lo conviertes?</Text>
+            <View style={styles.promotionOptions}>
+              {PROMOTION_PIECES.map(({ piece, symbol, name }) => (
+                <TouchableOpacity
+                  key={piece}
+                  style={styles.promotionOption}
+                  onPress={() => handlePromotion(piece)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.promotionSymbol}>{symbol}</Text>
+                  <Text style={styles.promotionName}>{name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -249,5 +280,64 @@ const styles = StyleSheet.create({
   fileLabel: {
     bottom: 2,
     right: 2,
+  },
+  promotionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  promotionCard: {
+    backgroundColor: '#FFFDE7',
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
+    width: '95%',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  promotionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#5D4037',
+    textAlign: 'center',
+  },
+  promotionSubtitle: {
+    fontSize: 13,
+    color: '#8D6E63',
+    marginTop: 4,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  promotionOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    gap: 8,
+  },
+  promotionOption: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#FFF8E1',
+    borderRadius: 12,
+    paddingVertical: 10,
+    borderWidth: 2,
+    borderColor: '#FFCA28',
+    elevation: 2,
+  },
+  promotionSymbol: {
+    fontSize: 28,
+    color: '#1a1a2e',
+  },
+  promotionName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#5D4037',
+    marginTop: 4,
   },
 });

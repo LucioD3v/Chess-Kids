@@ -13,18 +13,19 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chesskids.app"
+      "bundleIdentifier": "com.chesskids.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#4A90D9"
       },
-      "package": "com.chesskids.app"
+      "package": "com.chesskids.app",
+      "versionCode": 1
     },
     "plugins": [
-      "expo-asset",
-      "expo-status-bar"
+      "expo-asset"
     ]
   }
 }

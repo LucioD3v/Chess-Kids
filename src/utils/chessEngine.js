@@ -34,11 +34,9 @@ export function makeMove(game, move) {
  */
 export function getGameStatus(game) {
   if (game.isCheckmate()) return 'checkmate';
-  if (game.isDraw()) return 'draw';
   if (game.isStalemate()) return 'stalemate';
+  if (game.isDraw()) return 'draw';
   if (game.isCheck()) return 'check';
-  if (game.isThreefoldRepetition()) return 'draw';
-  if (game.isInsufficientMaterial()) return 'draw';
   return 'playing';
 }
 

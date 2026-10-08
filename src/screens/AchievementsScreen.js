@@ -84,12 +84,12 @@ export default function AchievementsScreen({ navigation }) {
             <View
               style={[
                 styles.lessonsBar,
-                { width: `${(progress.lessonsCompleted.length / 6) * 100}%` },
+                { width: `${Math.min((progress.lessonsCompleted.length / 7) * 100, 100)}%` },
               ]}
             />
           </View>
           <Text style={styles.lessonsCount}>
-            {progress.lessonsCompleted.length}/6
+            {progress.lessonsCompleted.length}/7
           </Text>
         </View>
       </View>

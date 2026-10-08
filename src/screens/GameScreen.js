@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  BackHandler,
 } from 'react-native';
 import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
@@ -36,20 +37,51 @@ export default function GameScreen({ route, navigation }) {
   const [moveCount, setMoveCount] = useState(0);
   const [capturedByPlayer, setCapturedByPlayer] = useState([]);
   const [capturedByBot, setCapturedByBot] = useState([]);
-  
+
   const celebrationAnim = useRef(new Animated.Value(0)).current;
   const botThinkingAnim = useRef(new Animated.Value(0)).current;
+
+  // Refs for cleanup and guards
+  const botTimerRef = useRef(null);
+  const botLoopRef = useRef(null);
+  const gameEndedRef = useRef(false);
+
+  // Refs so callbacks always see current state without stale closures
+  const gameRef = useRef(null);
+  const moveCountRef = useRef(0);
+  const capturedByPlayerRef = useRef([]);
+  const capturedByBotRef = useRef([]);
 
   const avatar = AVATARS.find((a) => a.id === profile?.avatarId);
   const bot = BOT_NAMES[difficulty] || BOT_NAMES.easy;
 
   useEffect(() => {
     initGame();
+    return () => {
+      if (botTimerRef.current) clearTimeout(botTimerRef.current);
+      if (botLoopRef.current) botLoopRef.current.stop();
+    };
   }, []);
+
+  // Intercept Android hardware back to show the quit dialog instead of silently leaving
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (gameOver) return false; // allow default back when game is over
+      handleQuit();
+      return true; // prevent default back
+    });
+    return () => sub.remove();
+  }, [gameOver]);
+
+  // Keep refs in sync with state
+  useEffect(() => { gameRef.current = game; }, [game]);
+  useEffect(() => { moveCountRef.current = moveCount; }, [moveCount]);
+  useEffect(() => { capturedByPlayerRef.current = capturedByPlayer; }, [capturedByPlayer]);
+  useEffect(() => { capturedByBotRef.current = capturedByBot; }, [capturedByBot]);
 
   useEffect(() => {
     if (isBotThinking) {
-      Animated.loop(
+      botLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(botThinkingAnim, {
             toValue: 1,
@@ -62,105 +94,47 @@ export default function GameScreen({ route, navigation }) {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      botLoopRef.current.start();
     } else {
+      if (botLoopRef.current) {
+        botLoopRef.current.stop();
+        botLoopRef.current = null;
+      }
       botThinkingAnim.setValue(0);
     }
   }, [isBotThinking]);
 
   const initGame = () => {
     if (resumeSaved && progress.savedGame) {
-      const savedGame = new Chess(progress.savedGame.fen);
-      setGame(savedGame);
-      setMoveCount(progress.savedGame.moveCount || 0);
-      setCapturedByPlayer(progress.savedGame.capturedByPlayer || []);
-      setCapturedByBot(progress.savedGame.capturedByBot || []);
+      try {
+        const savedGame = new Chess(progress.savedGame.fen);
+        setGame(savedGame);
+        setMoveCount(progress.savedGame.moveCount || 0);
+        setCapturedByPlayer(progress.savedGame.capturedByPlayer || []);
+        setCapturedByBot(progress.savedGame.capturedByBot || []);
+      } catch {
+        // Corrupted FEN — discard the saved game and start fresh
+        clearSavedGame();
+        setGame(new Chess());
+      }
     } else {
       setGame(new Chess());
     }
   };
 
-  const handlePlayerMove = useCallback(
-    (moveData) => {
-      if (!game || gameOver || isBotThinking) return;
-      if (game.turn() !== 'w') return;
-
-      const gameCopy = new Chess(game.fen());
-      const move = gameCopy.move({
-        from: moveData.from,
-        to: moveData.to,
-        promotion: 'q', // Always promote to queen for simplicity
-      });
-
-      if (!move) return;
-
-      // Track captures
-      if (move.captured) {
-        setCapturedByPlayer((prev) => [...prev, move.captured]);
-      }
-
-      setGame(gameCopy);
-      setLastMove({ from: move.from, to: move.to });
-      setMoveCount((prev) => prev + 1);
-
-      // Check game status after player move
-      const status = getGameStatus(gameCopy);
-      if (status !== 'playing' && status !== 'check') {
-        handleGameEnd(status, gameCopy);
-        return;
-      }
-
-      // Bot's turn
-      setIsBotThinking(true);
-      setTimeout(() => {
-        makeBotMove(gameCopy);
-      }, 800 + Math.random() * 700); // Simulate thinking time
-    },
-    [game, gameOver, isBotThinking, difficulty]
-  );
-
-  const makeBotMove = (currentGame) => {
-    const botMove = getBotMove(currentGame, difficulty);
-    if (!botMove) {
-      setIsBotThinking(false);
-      return;
-    }
-
-    const gameCopy = new Chess(currentGame.fen());
-    const move = gameCopy.move(botMove);
-
-    if (move) {
-      // Track bot captures
-      if (move.captured) {
-        setCapturedByBot((prev) => [...prev, move.captured]);
-      }
-
-      setGame(gameCopy);
-      setLastMove({ from: move.from, to: move.to });
-      setMoveCount((prev) => prev + 1);
-
-      // Check game status after bot move
-      const status = getGameStatus(gameCopy);
-      if (status !== 'playing' && status !== 'check') {
-        handleGameEnd(status, gameCopy);
-      }
-    }
-
-    setIsBotThinking(false);
-  };
-
   const handleGameEnd = async (status, finalGame) => {
+    if (gameEndedRef.current) return;
+    gameEndedRef.current = true;
     setGameOver(true);
     await clearSavedGame();
 
     let result;
     if (status === 'checkmate') {
-      // Who won?
       if (finalGame.turn() === 'b') {
         result = 'win';
         await recordWin(difficulty);
         await updateStats(true);
-        // Celebration animation
         Animated.spring(celebrationAnim, {
           toValue: 1,
           friction: 3,
@@ -178,9 +152,77 @@ export default function GameScreen({ route, navigation }) {
     setGameResult(result);
   };
 
+  const makeBotMove = (currentGame) => {
+    const botMove = getBotMove(currentGame, difficulty);
+    if (!botMove) {
+      setIsBotThinking(false);
+      // Safety net: if there's no move the game must already be over
+      const status = getGameStatus(currentGame);
+      if (status !== 'playing' && status !== 'check') {
+        handleGameEnd(status, currentGame);
+      }
+      return;
+    }
+
+    const gameCopy = new Chess(currentGame.fen());
+    const move = gameCopy.move(botMove);
+
+    if (move) {
+      if (move.captured) {
+        setCapturedByBot((prev) => [...prev, move.captured]);
+      }
+
+      setGame(gameCopy);
+      setLastMove({ from: move.from, to: move.to });
+      setMoveCount((prev) => prev + 1);
+
+      const status = getGameStatus(gameCopy);
+      if (status !== 'playing' && status !== 'check') {
+        handleGameEnd(status, gameCopy);
+      }
+    }
+
+    setIsBotThinking(false);
+  };
+
+  const handlePlayerMove = useCallback(
+    (moveData) => {
+      if (!game || gameOver || isBotThinking) return;
+      if (game.turn() !== 'w') return;
+
+      const gameCopy = new Chess(game.fen());
+      const move = gameCopy.move({
+        from: moveData.from,
+        to: moveData.to,
+        promotion: moveData.promotion || 'q',
+      });
+
+      if (!move) return;
+
+      if (move.captured) {
+        setCapturedByPlayer((prev) => [...prev, move.captured]);
+      }
+
+      setGame(gameCopy);
+      setLastMove({ from: move.from, to: move.to });
+      setMoveCount((prev) => prev + 1);
+
+      const status = getGameStatus(gameCopy);
+      if (status !== 'playing' && status !== 'check') {
+        handleGameEnd(status, gameCopy);
+        return;
+      }
+
+      setIsBotThinking(true);
+      botTimerRef.current = setTimeout(() => {
+        makeBotMove(gameCopy);
+      }, 800 + Math.random() * 700);
+    },
+    [game, gameOver, isBotThinking, difficulty]
+  );
+
   const handleSaveGame = async () => {
     if (!game || gameOver) return;
-
     await saveGame({
       fen: game.fen(),
       difficulty,
@@ -189,13 +231,17 @@ export default function GameScreen({ route, navigation }) {
       capturedByBot,
       savedAt: new Date().toISOString(),
     });
-
     Alert.alert('💾 ¡Partida Guardada!', 'Puedes continuar después desde donde te quedaste.', [
       { text: '¡Genial!', onPress: () => navigation.goBack() },
     ]);
   };
 
   const handleNewGame = () => {
+    if (botTimerRef.current) {
+      clearTimeout(botTimerRef.current);
+      botTimerRef.current = null;
+    }
+    gameEndedRef.current = false;
     setGame(new Chess());
     setLastMove(null);
     setGameOver(false);
@@ -203,10 +249,17 @@ export default function GameScreen({ route, navigation }) {
     setMoveCount(0);
     setCapturedByPlayer([]);
     setCapturedByBot([]);
+    setIsBotThinking(false);
     celebrationAnim.setValue(0);
   };
 
   const handleQuit = () => {
+    // Pause the bot timer while the dialog is open to avoid saving a stale position
+    if (botTimerRef.current) {
+      clearTimeout(botTimerRef.current);
+      botTimerRef.current = null;
+      setIsBotThinking(false);
+    }
     Alert.alert(
       '¿Salir de la partida?',
       '¿Quieres guardar antes de salir?',
@@ -219,7 +272,22 @@ export default function GameScreen({ route, navigation }) {
         },
         {
           text: 'Guardar y salir',
-          onPress: handleSaveGame,
+          onPress: async () => {
+            const currentGame = gameRef.current;
+            if (!currentGame || gameOver) {
+              navigation.goBack();
+              return;
+            }
+            await saveGame({
+              fen: currentGame.fen(),
+              difficulty,
+              moveCount: moveCountRef.current,
+              capturedByPlayer: capturedByPlayerRef.current,
+              capturedByBot: capturedByBotRef.current,
+              savedAt: new Date().toISOString(),
+            });
+            navigation.goBack();
+          },
         },
       ]
     );

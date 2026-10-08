@@ -16,9 +16,11 @@ export default function ProfileScreen({ navigation }) {
   const { createProfile, profile, saveProfile, AVATARS } = useProfile();
   const [name, setName] = useState(profile?.name || '');
   const [selectedAvatar, setSelectedAvatar] = useState(profile?.avatarId || null);
+  const [saving, setSaving] = useState(false);
   const isEditing = !!profile;
 
   const handleSave = async () => {
+    if (saving) return;
     if (!name.trim()) {
       Alert.alert('¡Oops!', '¡Necesitas escribir tu nombre! 📝');
       return;
@@ -28,12 +30,18 @@ export default function ProfileScreen({ navigation }) {
       return;
     }
 
-    if (isEditing) {
-      await saveProfile({ ...profile, name: name.trim(), avatarId: selectedAvatar });
-    } else {
-      await createProfile(name.trim(), selectedAvatar);
+    setSaving(true);
+    try {
+      if (isEditing) {
+        await saveProfile({ ...profile, name: name.trim(), avatarId: selectedAvatar });
+        navigation.goBack(); // return to HomeScreen without duplicating the stack
+      } else {
+        await createProfile(name.trim(), selectedAvatar);
+        navigation.replace('Home');
+      }
+    } finally {
+      setSaving(false);
     }
-    navigation.replace('Home');
   };
 
   return (
@@ -42,6 +50,11 @@ export default function ProfileScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {isEditing && (
+          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.cancelButtonText}>← Cancelar</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>
           {isEditing ? '✏️ Editar Perfil' : '🎉 ¡Crea tu Perfil!'}
         </Text>
@@ -97,9 +110,13 @@ export default function ProfileScreen({ navigation }) {
         )}
 
         {/* Save Button */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, saving && { opacity: 0.6 }]}
+          onPress={handleSave}
+          disabled={saving}
+        >
           <Text style={styles.saveButtonText}>
-            {isEditing ? '💾 Guardar Cambios' : '🚀 ¡Empezar a Jugar!'}
+            {saving ? '⏳ Guardando...' : isEditing ? '💾 Guardar Cambios' : '🚀 ¡Empezar a Jugar!'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -115,6 +132,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 60,
+  },
+  cancelButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
   },
   title: {
     fontSize: 32,

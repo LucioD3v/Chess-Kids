@@ -1,17 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useProfile } from '../context/ProfileContext';
+import { useProgress } from '../context/ProgressContext';
 
 const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen({ navigation }) {
-  const { profile, loading } = useProfile();
+  const { profile, loading: profileLoading } = useProfile();
+  const { loading: progressLoading } = useProgress();
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
   const bounceAnim = useRef(new Animated.Value(0)).current;
+  const bounceLoopRef = useRef(null);
 
   useEffect(() => {
-    // Entry animation
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -26,8 +29,7 @@ export default function SplashScreen({ navigation }) {
       }),
     ]).start();
 
-    // Bounce animation for pieces
-    Animated.loop(
+    bounceLoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.timing(bounceAnim, {
           toValue: -10,
@@ -40,12 +42,17 @@ export default function SplashScreen({ navigation }) {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    bounceLoopRef.current.start();
+
+    return () => {
+      if (bounceLoopRef.current) bounceLoopRef.current.stop();
+    };
   }, []);
 
   useEffect(() => {
-    // Only navigate once loading is done
-    if (loading) return;
+    // Wait for BOTH contexts to finish loading before navigating
+    if (profileLoading || progressLoading) return;
 
     const timer = setTimeout(() => {
       if (profile) {
@@ -56,7 +63,7 @@ export default function SplashScreen({ navigation }) {
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [loading, profile, navigation]);
+  }, [profileLoading, progressLoading, profile, navigation]);
 
   return (
     <View style={styles.container}>

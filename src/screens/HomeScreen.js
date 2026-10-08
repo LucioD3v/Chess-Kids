@@ -27,7 +27,7 @@ export default function HomeScreen({ navigation }) {
       subtitle: 'Conoce las piezas y sus movimientos',
       color: '#4CAF50',
       screen: 'Learn',
-      badge: `${progress.lessonsCompleted.length}/6`,
+      badge: `${progress.lessonsCompleted.length}/7`,
     },
     {
       id: 'play',
