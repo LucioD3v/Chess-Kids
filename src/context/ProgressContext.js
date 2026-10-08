@@ -108,6 +108,16 @@ export function ProgressProvider({ children }) {
     await saveProgress(updated);
   };
 
+  const resetProgress = async () => {
+    try {
+      await AsyncStorage.removeItem('chess_kids_progress');
+      progressRef.current = INITIAL_PROGRESS;
+      setProgress(INITIAL_PROGRESS);
+    } catch (error) {
+      console.error('Error resetting progress:', error);
+    }
+  };
+
   return (
     <ProgressContext.Provider
       value={{
@@ -117,6 +127,7 @@ export function ProgressProvider({ children }) {
         recordWin,
         saveGame,
         clearSavedGame,
+        resetProgress,
         ACHIEVEMENTS,
       }}
     >

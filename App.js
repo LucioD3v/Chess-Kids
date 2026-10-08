@@ -14,6 +14,7 @@ import PieceLessonScreen from './src/screens/PieceLessonScreen';
 import PlayScreen from './src/screens/PlayScreen';
 import GameScreen from './src/screens/GameScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
+import AboutScreen from './src/screens/AboutScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -38,6 +39,7 @@ export default function App() {
             <Stack.Screen name="Play" component={PlayScreen} />
             <Stack.Screen name="Game" component={GameScreen} />
             <Stack.Screen name="Achievements" component={AchievementsScreen} />
+            <Stack.Screen name="About" component={AboutScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </ProgressProvider>

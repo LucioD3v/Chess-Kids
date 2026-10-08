@@ -122,6 +122,15 @@ export default function HomeScreen({ navigation }) {
           {getTipOfDay()}
         </Text>
       </View>
+
+      {/* About link */}
+      <TouchableOpacity
+        style={styles.aboutLink}
+        onPress={() => navigation.navigate('About')}
+        activeOpacity={0.6}
+      >
+        <Text style={styles.aboutLinkText}>ℹ️ Acerca de la app</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -280,5 +289,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#5D4037',
     lineHeight: 20,
+  },
+  aboutLink: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  aboutLinkText: {
+    fontSize: 14,
+    color: '#9E9E9E',
+    fontWeight: '500',
   },
 });

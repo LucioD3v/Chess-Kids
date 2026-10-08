@@ -15,6 +15,7 @@ import { getBotMove } from '../utils/botAI';
 import { getGameStatus } from '../utils/chessEngine';
 import { useProfile } from '../context/ProfileContext';
 import { useProgress } from '../context/ProgressContext';
+import { useSounds } from '../hooks/useSounds';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +29,7 @@ export default function GameScreen({ route, navigation }) {
   const { difficulty, resumeSaved } = route.params;
   const { profile, updateStats, AVATARS } = useProfile();
   const { progress, recordWin, saveGame, clearSavedGame } = useProgress();
+  const { play, muted, toggleMute } = useSounds();
 
   const [game, setGame] = useState(null);
   const [lastMove, setLastMove] = useState(null);
@@ -37,6 +39,7 @@ export default function GameScreen({ route, navigation }) {
   const [moveCount, setMoveCount] = useState(0);
   const [capturedByPlayer, setCapturedByPlayer] = useState([]);
   const [capturedByBot, setCapturedByBot] = useState([]);
+  const [tutorialStep, setTutorialStep] = useState(profile?.gamesPlayed === 0 ? 1 : 0);
 
   const celebrationAnim = useRef(new Animated.Value(0)).current;
   const botThinkingAnim = useRef(new Animated.Value(0)).current;
@@ -126,30 +129,33 @@ export default function GameScreen({ route, navigation }) {
   const handleGameEnd = async (status, finalGame) => {
     if (gameEndedRef.current) return;
     gameEndedRef.current = true;
-    setGameOver(true);
-    await clearSavedGame();
 
+    // Determine result first so the overlay shows correct content immediately
     let result;
     if (status === 'checkmate') {
-      if (finalGame.turn() === 'b') {
-        result = 'win';
-        await recordWin(difficulty);
-        await updateStats(true);
-        Animated.spring(celebrationAnim, {
-          toValue: 1,
-          friction: 3,
-          useNativeDriver: true,
-        }).start();
-      } else {
-        result = 'lose';
-        await updateStats(false);
-      }
+      result = finalGame.turn() === 'b' ? 'win' : 'lose';
     } else {
       result = 'draw';
-      await updateStats(false);
     }
 
-    setGameResult(result);
+    setGameOver(true);
+    setGameResult(result); // show overlay at once — no empty-card flash
+
+    await clearSavedGame();
+
+    if (result === 'win') {
+      play('win');
+      await recordWin(difficulty);
+      await updateStats(true);
+      Animated.spring(celebrationAnim, {
+        toValue: 1,
+        friction: 3,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      play('lose');
+      await updateStats(false);
+    }
   };
 
   const makeBotMove = (currentGame) => {
@@ -168,6 +174,8 @@ export default function GameScreen({ route, navigation }) {
     const move = gameCopy.move(botMove);
 
     if (move) {
+      play(move.captured ? 'capture' : 'move');
+
       if (move.captured) {
         setCapturedByBot((prev) => [...prev, move.captured]);
       }
@@ -177,6 +185,7 @@ export default function GameScreen({ route, navigation }) {
       setMoveCount((prev) => prev + 1);
 
       const status = getGameStatus(gameCopy);
+      if (status === 'check') play('check');
       if (status !== 'playing' && status !== 'check') {
         handleGameEnd(status, gameCopy);
       }
@@ -199,6 +208,9 @@ export default function GameScreen({ route, navigation }) {
 
       if (!move) return;
 
+      setTutorialStep(0);
+      play(move.captured ? 'capture' : 'move');
+
       if (move.captured) {
         setCapturedByPlayer((prev) => [...prev, move.captured]);
       }
@@ -208,6 +220,7 @@ export default function GameScreen({ route, navigation }) {
       setMoveCount((prev) => prev + 1);
 
       const status = getGameStatus(gameCopy);
+      if (status === 'check') play('check');
       if (status !== 'playing' && status !== 'check') {
         handleGameEnd(status, gameCopy);
         return;
@@ -218,7 +231,7 @@ export default function GameScreen({ route, navigation }) {
         makeBotMove(gameCopy);
       }, 800 + Math.random() * 700);
     },
-    [game, gameOver, isBotThinking, difficulty]
+    [game, gameOver, isBotThinking, difficulty, play]
   );
 
   const handleSaveGame = async () => {
@@ -320,6 +333,9 @@ export default function GameScreen({ route, navigation }) {
         <TouchableOpacity style={styles.quitButton} onPress={handleQuit}>
           <Text style={styles.quitButtonText}>✕</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.muteButton} onPress={toggleMute}>
+          <Text style={styles.muteButtonText}>{muted ? '🔇' : '🔊'}</Text>
+        </TouchableOpacity>
         <View style={styles.botSection}>
           <Text style={styles.botEmoji}>{bot.emoji}</Text>
           <View>
@@ -337,14 +353,19 @@ export default function GameScreen({ route, navigation }) {
             </Animated.Text>
           )}
         </View>
-        {/* Bot captures */}
-        <View style={styles.capturedRow}>
-          {capturedByBot.map((piece, i) => (
-            <Text key={i} style={styles.capturedPiece}>
-              {getPieceEmoji(piece, 'w')}
-            </Text>
-          ))}
-        </View>
+        {/* Bot captures — pieces the bot took from the player */}
+        {capturedByBot.length > 0 && (
+          <View style={styles.capturedSection}>
+            <Text style={styles.capturedLabel}>Come: </Text>
+            <View style={styles.capturedRow}>
+              {capturedByBot.map((piece, i) => (
+                <Text key={i} style={styles.capturedPiece}>
+                  {getPieceEmoji(piece, 'w')}
+                </Text>
+              ))}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Game Status */}
@@ -367,13 +388,18 @@ export default function GameScreen({ route, navigation }) {
 
       {/* Player Info */}
       <View style={styles.bottomBar}>
-        <View style={styles.capturedRow}>
-          {capturedByPlayer.map((piece, i) => (
-            <Text key={i} style={styles.capturedPiece}>
-              {getPieceEmoji(piece, 'b')}
-            </Text>
-          ))}
-        </View>
+        {capturedByPlayer.length > 0 && (
+          <View style={styles.capturedSection}>
+            <Text style={styles.capturedLabel}>Comes: </Text>
+            <View style={styles.capturedRow}>
+              {capturedByPlayer.map((piece, i) => (
+                <Text key={i} style={styles.capturedPiece}>
+                  {getPieceEmoji(piece, 'b')}
+                </Text>
+              ))}
+            </View>
+          </View>
+        )}
         <View style={styles.playerSection}>
           <Text style={styles.playerEmoji}>{avatar?.emoji || '🎮'}</Text>
           <View>
@@ -387,6 +413,31 @@ export default function GameScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Tutorial overlay - shown only on the very first game */}
+      {tutorialStep > 0 && !gameOver && (
+        <View style={styles.tutorialOverlay}>
+          <View style={styles.tutorialCard}>
+            <Text style={styles.tutorialStepLabel}>Paso {tutorialStep} de 3</Text>
+            <Text style={styles.tutorialText}>
+              {tutorialStep === 1 && 'Toca una pieza blanca para empezar ♙'}
+              {tutorialStep === 2 && '¡Ahora toca una casilla verde para mover! 🟢'}
+              {tutorialStep === 3 && '¡El bot jugará solo después de ti! 🤔'}
+            </Text>
+            <TouchableOpacity
+              style={styles.tutorialButton}
+              onPress={() => {
+                if (tutorialStep < 3) setTutorialStep((s) => s + 1);
+                else setTutorialStep(0);
+              }}
+            >
+              <Text style={styles.tutorialButtonText}>
+                {tutorialStep < 3 ? 'Siguiente →' : '¡A jugar!'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Game Over Overlay */}
       {gameOver && (
@@ -493,6 +544,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  muteButton: {
+    position: 'absolute',
+    top: 50,
+    right: 60,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ffffff20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  muteButtonText: {
+    fontSize: 18,
+  },
   botSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -516,15 +582,29 @@ const styles = StyleSheet.create({
     color: '#FFC107',
     marginLeft: 12,
   },
+  capturedSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff15',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  capturedLabel: {
+    fontSize: 11,
+    color: '#AAA',
+    fontWeight: '600',
+  },
   capturedRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 4,
-    minHeight: 20,
   },
   capturedPiece: {
     fontSize: 16,
-    marginRight: 2,
+    marginRight: 1,
+    color: '#EEE',
   },
   checkBanner: {
     backgroundColor: '#FF5722',
@@ -639,5 +719,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFF',
+  },
+  tutorialOverlay: {
+    position: 'absolute',
+    bottom: 110,
+    left: 16,
+    right: 16,
+    zIndex: 20,
+  },
+  tutorialCard: {
+    backgroundColor: '#1565C0',
+    borderRadius: 16,
+    padding: 16,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  tutorialStepLabel: {
+    fontSize: 11,
+    color: '#90CAF9',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  tutorialText: {
+    fontSize: 16,
+    color: '#FFF',
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  tutorialButton: {
+    marginTop: 12,
+    backgroundColor: '#FFC107',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-end',
+  },
+  tutorialButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1a1a2e',
   },
 });

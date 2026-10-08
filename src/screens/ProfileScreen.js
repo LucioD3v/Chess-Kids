@@ -11,13 +11,46 @@ import {
   Platform,
 } from 'react-native';
 import { useProfile } from '../context/ProfileContext';
+import { useProgress } from '../context/ProgressContext';
 
 export default function ProfileScreen({ navigation }) {
   const { createProfile, profile, saveProfile, AVATARS } = useProfile();
+  const { resetProgress } = useProgress();
   const [name, setName] = useState(profile?.name || '');
   const [selectedAvatar, setSelectedAvatar] = useState(profile?.avatarId || null);
   const [saving, setSaving] = useState(false);
   const isEditing = !!profile;
+
+  const handleResetProgress = () => {
+    Alert.alert(
+      '¿Borrar todo el progreso?',
+      'Se eliminarán todas tus estrellas, logros y partidas guardadas. Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: '🗑️ Sí, borrar todo',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              '¿Estás seguro?',
+              '¡Esta es tu última oportunidad! Se borrará todo tu progreso para siempre.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                  text: 'Borrar todo',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await resetProgress();
+                    Alert.alert('¡Listo!', 'El progreso ha sido reiniciado. ¡A empezar de nuevo!');
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
 
   const handleSave = async () => {
     if (saving) return;
@@ -119,6 +152,13 @@ export default function ProfileScreen({ navigation }) {
             {saving ? '⏳ Guardando...' : isEditing ? '💾 Guardar Cambios' : '🚀 ¡Empezar a Jugar!'}
           </Text>
         </TouchableOpacity>
+
+        {/* Reset progress — only shown in edit mode */}
+        {isEditing && (
+          <TouchableOpacity style={styles.resetButton} onPress={handleResetProgress}>
+            <Text style={styles.resetButtonText}>🗑️ Reiniciar progreso</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -260,5 +300,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFF',
+  },
+  resetButton: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  resetButtonText: {
+    fontSize: 15,
+    color: '#E53935',
+    fontWeight: '600',
   },
 });

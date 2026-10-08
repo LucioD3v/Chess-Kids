@@ -37,6 +37,8 @@ export function getGameStatus(game) {
   if (game.isStalemate()) return 'stalemate';
   if (game.isDraw()) return 'draw';
   if (game.isCheck()) return 'check';
+  // Safety net: covers fifty-move rule, repetition, or any other game-over condition
+  if (game.isGameOver()) return 'draw';
   return 'playing';
 }
 

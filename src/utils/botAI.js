@@ -69,11 +69,13 @@ function evaluateBoard(game) {
 }
 
 /**
- * Minimax with alpha-beta pruning
+ * Minimax with alpha-beta pruning.
+ * counter.nodes is decremented each call; returns a heuristic when budget runs out.
  */
-function minimax(game, depth, alpha, beta, isMaximizing) {
-  if (depth === 0) return evaluateBoard(game);
-  
+function minimax(game, depth, alpha, beta, isMaximizing, counter) {
+  counter.nodes -= 1;
+  if (counter.nodes <= 0 || depth === 0) return evaluateBoard(game);
+
   if (game.isGameOver()) {
     if (game.isCheckmate()) {
       return isMaximizing ? -99999 : 99999;
@@ -87,7 +89,7 @@ function minimax(game, depth, alpha, beta, isMaximizing) {
     let maxEval = -Infinity;
     for (const move of moves) {
       game.move(move);
-      const evalScore = minimax(game, depth - 1, alpha, beta, false);
+      const evalScore = minimax(game, depth - 1, alpha, beta, false, counter);
       game.undo();
       maxEval = Math.max(maxEval, evalScore);
       alpha = Math.max(alpha, evalScore);
@@ -98,7 +100,7 @@ function minimax(game, depth, alpha, beta, isMaximizing) {
     let minEval = Infinity;
     for (const move of moves) {
       game.move(move);
-      const evalScore = minimax(game, depth - 1, alpha, beta, true);
+      const evalScore = minimax(game, depth - 1, alpha, beta, true, counter);
       game.undo();
       minEval = Math.min(minEval, evalScore);
       beta = Math.min(beta, evalScore);
@@ -109,19 +111,20 @@ function minimax(game, depth, alpha, beta, isMaximizing) {
 }
 
 /**
- * Get best move using minimax
+ * Get best move using minimax with a node budget to keep the JS thread free.
  */
-function getBestMove(game, depth = 3) {
+function getBestMove(game, depth = 2, nodeLimit = 3000) {
   const moves = game.moves();
   if (moves.length === 0) return null;
 
+  const counter = { nodes: nodeLimit };
   const isWhite = game.turn() === 'w';
   let bestMove = moves[0];
   let bestValue = isWhite ? -Infinity : Infinity;
 
   for (const move of moves) {
     game.move(move);
-    const value = minimax(game, depth - 1, -Infinity, Infinity, !isWhite);
+    const value = minimax(game, depth - 1, -Infinity, Infinity, !isWhite, counter);
     game.undo();
 
     if (isWhite && value > bestValue) {
@@ -181,10 +184,10 @@ function getMediumMove(game) {
 }
 
 /**
- * Hard bot - full minimax with depth 3
+ * Hard bot - minimax depth 2 with node budget to avoid blocking the JS thread
  */
 function getHardMove(game) {
-  return getBestMove(game, 3);
+  return getBestMove(game, 2, 3000);
 }
 
 /**
