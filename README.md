@@ -20,6 +20,7 @@ Aplicación móvil educativa desarrollada en **React Native + Expo** para que ni
 - [Instrucciones de Juego](#instrucciones-de-juego)
 - [Arquitectura Técnica](#arquitectura-técnica)
 - [Construcción para Producción](#construcción-para-producción)
+- [Probar Build de Producción](#probar-build-de-producción)
 - [Dependencias](#dependencias)
 - [Personalización](#personalización)
 - [Solución de Problemas](#solución-de-problemas)
@@ -105,37 +106,44 @@ chess-kids/
 ├── App.js                    # Punto de entrada — providers + stack navigator
 ├── app.json                  # Config de Expo (nombre, iconos, splash, bundle IDs)
 ├── babel.config.js           # Configuración de Babel (babel-preset-expo)
-├── metro.config.js           # Configuración de Metro bundler
 ├── package.json              # Dependencias y scripts
 │
 ├── assets/                   # Recursos estáticos
-│   ├── icon.png              # Ícono de la app (1024×1024 px)
+│   ├── icon.png              # Ícono de la app (1024×1024 px, sin transparencia)
 │   ├── splash.png            # Pantalla de carga (1284×2778 px)
-│   └── adaptive-icon.png    # Ícono adaptativo Android (1024×1024 px)
-│
-├── android/                  # Proyecto nativo Android (generado por Expo)
+│   ├── adaptive-icon.png     # Ícono adaptativo Android (1024×1024 px)
+│   └── sounds/               # Efectos de sonido
+│       ├── move.wav           # Sonido al mover pieza
+│       ├── capture.wav        # Sonido de captura
+│       ├── check.wav          # Sonido de jaque
+│       ├── win.wav            # Fanfara de victoria
+│       └── lose.wav           # Sonido de derrota amigable
 │
 └── src/
     ├── components/
-    │   ├── ChessBoard.js     # Tablero 8×8 con tap-to-move y feedback visual
+    │   ├── ChessBoard.js     # Tablero 8×8 con tap-to-move, selector de coronación
     │   └── ChessPieces.js    # 12 piezas SVG con diseño friendly para niños
     │
     ├── context/
     │   ├── ProfileContext.js # Perfil del niño (nombre, avatar, estadísticas)
     │   └── ProgressContext.js# Progreso: lecciones, logros, estrellas, partida guardada
     │
+    ├── hooks/
+    │   └── useSounds.js      # Hook de sonidos con expo-av (degradación elegante)
+    │
     ├── screens/
     │   ├── SplashScreen.js         # Pantalla de carga con animaciones
-    │   ├── ProfileScreen.js        # Crear/editar perfil
+    │   ├── ProfileScreen.js        # Crear/editar perfil + reinicio de progreso
     │   ├── HomeScreen.js           # Menú principal con barra de progreso
     │   ├── LearnScreen.js          # Lista de lecciones con badges
     │   ├── PieceLessonScreen.js    # Lección interactiva paso a paso
     │   ├── PlayScreen.js           # Selección de dificultad y partida guardada
-    │   ├── GameScreen.js           # Tablero de juego vs bot
-    │   └── AchievementsScreen.js   # Logros y estadísticas
+    │   ├── GameScreen.js           # Tablero de juego vs bot con sonidos y tutorial
+    │   ├── AchievementsScreen.js   # Logros y estadísticas
+    │   └── AboutScreen.js          # Acerca de la app y redes sociales del desarrollador
     │
     └── utils/
-        ├── botAI.js          # IA del bot: minimax con poda alpha-beta (3 niveles)
+        ├── botAI.js          # IA del bot: minimax con poda alpha-beta y límite de nodos
         ├── chessEngine.js    # Wrapper sobre chess.js
         └── lessons.js        # Contenido de lecciones (6 piezas + jugadas especiales)
 ```
@@ -148,6 +156,7 @@ chess-kids/
 - Crea tu perfil con nombre y avatar (8 emojis: Caballito, Gatito, Dragón, Estrella, Cohete, Arcoíris, León, Unicornio)
 - Estadísticas de partidas jugadas y ganadas
 - Perfil editable en cualquier momento
+- **Reinicio de progreso** con doble confirmación (🗑️ en pantalla de perfil)
 
 ### Módulo de Aprendizaje
 - **6 lecciones interactivas** (una por pieza): Peón, Torre, Caballo, Alfil, Reina, Rey
@@ -162,11 +171,14 @@ chess-kids/
 |-------|-----|------------|
 | Fácil | Botín el Amigable | 70% aleatorio, 30% busca capturas |
 | Medio | Robo el Pensador | Minimax profundidad 2 con 40% de error |
-| Difícil | Mega el Campeón | Minimax + alpha-beta, profundidad 3, tablas posicionales |
+| Difícil | Mega el Campeón | Minimax + alpha-beta, profundidad 2 + límite 3 000 nodos |
 
 - El jugador siempre juega con las piezas blancas
 - Indicador animado mientras el bot "piensa"
 - Detección automática de jaque, jaque mate y empate
+- **Selector de coronación** al llegar el peón al otro extremo (Reina, Torre, Alfil, Caballo)
+- **Tutorial interactivo** de 3 pasos para la primera partida
+- **Efectos de sonido** para mover, capturar, jaque, victoria y derrota (🔊/🔇 botón mute)
 
 ### Tablero Interactivo
 - **Tap** para seleccionar pieza
@@ -232,7 +244,8 @@ chess-kids/
 Splash ──► Profile (primera vez)
        └─► Home ──► Learn ──► PieceLesson
                 ├─► Play  ──► Game
-                └─► Achievements
+                ├─► Achievements
+                └─► About
 ```
 
 Todas las transiciones usan `slide_from_right`. Los headers de navegación están ocultos — cada pantalla controla su propia cabecera.
@@ -292,6 +305,44 @@ eas build --platform ios --profile production
 
 ---
 
+## Probar Build de Producción
+
+Expo Go tiene limitaciones con módulos nativos (ej. expo-av). Para probar la app exactamente como se publicará en tienda, usa una de estas opciones:
+
+### Opción A — Build local Android (gratis, sin cuenta de tienda)
+
+Requiere Android Studio con un emulador configurado o un teléfono conectado por USB con depuración USB activada.
+
+```bash
+npx expo run:android
+```
+
+Compila e instala la app directamente. Todos los módulos nativos (sonido, hápticos) funcionan correctamente.
+
+### Opción B — EAS Build preview (APK descargable, sin tienda)
+
+Genera un APK listo para instalar en cualquier Android sin pasar por la Play Store:
+
+```bash
+npm install -g eas-cli
+eas login
+eas build --platform android --profile preview
+```
+
+Cuando termina (~10-15 min), EAS proporciona un enlace para descargar el `.apk` e instalarlo directamente.
+
+### Opción C — Build local iOS
+
+Requiere macOS con Xcode instalado.
+
+```bash
+npx expo run:ios
+```
+
+> **Nota:** Los archivos de sonido en `assets/sounds/` son placeholders silenciosos. Reemplázalos con audio real antes de publicar.
+
+---
+
 ## Dependencias
 
 ### Principales
@@ -301,13 +352,14 @@ eas build --platform ios --profile production
 | `expo` | ^57.0.10 | Framework cross-platform |
 | `react` | 19.2.3 | Biblioteca UI |
 | `react-native` | 0.86.2 | Runtime móvil nativo |
-| `chess.js` | ^1.0.0-beta.8 | Motor de ajedrez (reglas, FEN, validación) |
+| `chess.js` | 1.0.0-beta.8 | Motor de ajedrez (reglas, FEN, validación) — versión fijada |
 | `react-native-svg` | 15.15.4 | Renderizado de piezas SVG |
 | `@react-navigation/native` | ^6.1.18 | Navegación entre pantallas |
 | `@react-navigation/native-stack` | ^6.11.0 | Stack navigator con transiciones |
 | `@react-native-async-storage/async-storage` | 2.2.0 | Persistencia local |
 | `react-native-gesture-handler` | ~2.32.0 | Gestos táctiles |
 | `expo-haptics` | ~57.0.1 | Retroalimentación háptica |
+| `expo-av` | ~15.1.0 | Efectos de sonido |
 
 ### Dev Dependencies
 
@@ -363,9 +415,16 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-**Expo Go muestra "Something went wrong"**
+**Expo Go muestra "Something went wrong" o "runtime not ready"**
+- Actualiza Expo Go a la última versión (debe coincidir con SDK 57)
 - Asegúrate de que tu dispositivo y la computadora estén en la **misma red Wi-Fi**
 - Si usas VPN, desactívala temporalmente
+- Para módulos nativos (sonido, hápticos), usa `npx expo run:android` en lugar de Expo Go
+
+**Los sonidos no se escuchan**
+- En Expo Go los sonidos pueden no funcionar por limitaciones de módulos nativos
+- Usa `npx expo run:android` o un EAS Build para probar audio real
+- Verifica que los archivos en `assets/sounds/` contengan audio real (no son los placeholders silenciosos)
 
 **Error nativo en Android**
 ```bash
